@@ -58,22 +58,35 @@ class Reader:
         
         # If we only have an offset, that was meant to be the size
         if size == None:
+            assert(offset != None)
             return self.read(None, offset)
 
         if offset != None:
             self.cursor = offset
+        x = self.data[self.cursor:self.cursor+size]
+        #print("Reading at 0x%X" % self.cursor, size, x.hex())
         self.cursor += size
-        return self.data[self.cursor-size:self.cursor]
+        return x
     def parse(self, format):
         return struct.unpack(format, self.read(self.cursor, struct.calcsize(format)))
-    def readPtr(self):
-        return self.parse("<L" if self.ptrSize == 4 else "<Q")[0]
-    def readStr(self): #FIXME: Misnomer!
-        ptr = self.readPtr()
-        return self.readStrData(ptr)
+    def readPtr(self, *args):
+        return (self.read32 if self.ptrSize == 4 else self.read64)(*args)
+    def readStr(self, offset=None): #FIXME: Misnomer!
+        ptr = self.readPtr(offset)
+        return readStr(ptr)
     def readStrTable(self):
         ptr = self.readPtr()
-        return readStrTable(ptr)
+        result = []
+        for i in range(5):
+            result += [readStr(readPtr(ptr))]
+            ptr += self.ptrSize
+        return {
+            'en': result[0],
+            'de': result[1],
+            'fr': result[2],
+            'sp': result[3],
+            'it': result[4]
+        }
     def readMessage(self):
         return getMessage(self.parse("<H")[0])
     def check(self, cursor):
@@ -83,13 +96,13 @@ class Reader:
         self.cursor = cursor  
 
     # Some hacks for absolute reading
-    def read16(self, offset):
+    def read16(self, offset=None):
         return struct.unpack("<H", self.read(offset, 2))[0]
-    def read32(self, offset):
+    def read32(self, offset=None):
         return struct.unpack("<L", self.read(offset, 4))[0]
-    def read64(self, offset):
+    def read64(self, offset=None):
         return struct.unpack("<Q", self.read(offset, 8))[0]
-    def readStrData(self, offset):
+    def readStrData(self, offset=None):
         if offset == 0:
             return None
         s = self.read(offset, 2048)
@@ -107,7 +120,6 @@ class ELFReader(Reader):
         self.elf_path = elf_path
 
         super().__init__(mmapFile(self.f))
-
 
         machine = self.elf.header['e_machine']
                 
@@ -129,13 +141,20 @@ class ELFReader(Reader):
             self.elfSymbols = {}
             for sym in symtab.iter_symbols():
                 name = sym.name
+                if 'get_script_da' in name:
+                    print("'%s'" % name)
                 #assert(not name in self.elfSymbols)
                 self.elfSymbols[name] = sym['st_value']  # virtual address
 
+    # Deprecated, will be renamed to `getSymbol` in the future
     def find_va_for_symbol(self, symbol_name):
         if self.elfSymbols == None:
             return None
-        return self.elfSymbols[symbol_name]
+        return self.elfSymbols.get(symbol_name, None)
+    
+    # Better name
+    def getSymbol(self, symbol_name):
+        return self.find_va_for_symbol(symbol_name)
 
     def _find_segment_for_address(self, virtual_address):
         """
@@ -222,6 +241,7 @@ class ELFReader(Reader):
         
         # Seek to the correct position in the file
         self.f.seek(segment_offset + offset_within_segment)
+        #print("Reading elf 0x%X" % virtual_address, size)
         return self.f.read(size)
 
     def findCandidates(self, pattern):
@@ -239,7 +259,7 @@ class ELFReader(Reader):
                 sn = self._find_section_for_address(va)
 
                 #print(sn)
-                if sn in ['.rela.dyn']: # Avoid relocations
+                if sn in ['.rela.dyn', '.got']: # Avoid relocations and linker data
                     continue
 
                 yield va
@@ -254,7 +274,7 @@ def readElf(binPath):
     elf_reader = ELFReader(binPath)
 
     machine = elf_reader.elf.header['e_machine']
-    print(machine)
+    #print(machine)
             
     if machine == "EM_ARM": # (ARM architecture)
         plat = spike2
@@ -264,6 +284,11 @@ def readElf(binPath):
         imageBase = 0x100000  
     else:
         print(f"Unknown architecture: {machine}")
+
+    # Hacks to provide global access to the latest elf
+    print("Warning: Loaded ELF")
+    setElfReader(imageBase, elf_reader, plat)
+    setData(elf_reader.data)
 
     return imageBase, elf_reader, plat
 
@@ -275,25 +300,13 @@ def readStr(offset):
     return elf_reader.readStrData(offset)
 
 def readStrTable(ptr):
-    result = []
-    for i in range(5):
-        result += [readStr(readPtr(ptr))]
-        ptr += plat['PtrSize']
-    return {
-        'en': result[0],
-        'de': result[1],
-        'fr': result[2],
-        'sp': result[3],
-        'it': result[4]
-    }
-    
+    return elf_reader.readStrTable(ptr)
 
 def readPtr(offset):
-    reader = Reader(data)
-    return reader.read32(offset) if plat['PtrSize'] == 4 else reader.read64(offset)
+    return elf_reader.readPtr(offset)
 
 def getMessage(index):
-    print("message", index)
+    #print("message", index)
     addr = game['MessageTable'] + index * plat['PtrSize'] - imageBase
     #print("Reading 0x%X" % addr)
     ptr = readPtr(addr) # FIXME: Reloc should not have to be applied!
@@ -325,7 +338,7 @@ def has(va, pattern):
 def findCandidateStrTables(texts):
     for candidate in findCandidates(texts[0]):
         for ptr in findPtrCandidates(candidate): # Get XREF to string
-            print("ptr", hex(ptr))
+            #print("ptr", hex(ptr))
 
             i = 1
             isMatch = True

@@ -2,13 +2,17 @@
 
 # Working:
 # spike-2	batman-66               	2017-01-11	(0, 65, 0)
+# spike-2	batman-66	                2017-03-22	(0, 70, 0)	
 # spike-2	guardians-of-the-galaxy-pro	2018-02-13	(0, 87, 0)
 # spike-2	deadpool-pro	            2018-08-30	(0, 82, 0)
 # spike-1	kiss-le	                    2018-12-11	(1, 41, 0)
 # spike-1	whoa-nellie	                2019-01-25	(1, 55, 0)
+# spike-2	elvira-house-of-horrors	    2019-10-07	(0, 83, 0)
+# spike-2	batman-66	                2019-11-07	(1, 5, 0)
+
 
 # Not working:
-# spike-2	elvira-house-of-horrors	    2020-10-15	(1, 0, 0)  (weird flash offsets / sidecar logic without sidecar)
+# spike-2	elvira-house-of-horrors	    2020-10-15	(1, 0, 0)  (weird flash offsets / sidecar logic without sidecar); soundConfig should be at 0x15C650 ?
 # spike-1	can-crusher	                2020-12-22	(1, 2, 0)  (weird flash offsets / sidecar logic without sidecar)
 # spike-1	primus	                    2020-12-22	(1, 4, 0)  (weird flash offsets / sidecar logic without sidecar)
 
